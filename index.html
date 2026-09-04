@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人收支互動財務儀表板</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen">
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+        <!-- 頁首與設定 -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm mb-6">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">📊 個人收支互動儀表板</h1>
+                <p class="text-sm text-gray-500 mt-1" id="status-text">狀態：未連接資料來源</p>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-3">
+                <input type="text" id="sheet-url" placeholder="貼上 Google Sheets 發佈的 CSV 網址..." 
+                       class="px-4 py-2 border rounded-lg w-full sm:w-80 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="saveAndSync()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
+                    同步資料
+                </button>
+            </div>
+        </div>
+
+        <!-- 篩選器列 -->
+        <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex flex-wrap items-center gap-4">
+            <span class="font-semibold text-sm text-gray-700">時間區段：</span>
+            <button onclick="setDateRange('all')" class="filter-btn bg-blue-50 text-blue-600 font-medium px-3 py-1.5 rounded-lg text-sm">全部</button>
+            <button onclick="setDateRange('thisMonth')" class="filter-btn bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm">本月</button>
+            <button onclick="setDateRange('lastMonth')" class="filter-btn bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm">上個月</button>
+            
+            <div class="flex items-center gap-2 ml-auto">
+                <input type="date" id="start-date" class="border rounded px-2 py-1 text-sm">
+                <span class="text-gray-400">至</span>
+                <input type="date" id="end-date" class="border rounded px-2 py-1 text-sm">
+                <button onclick="filterByCustomDate()" class="bg-gray-800 text-white px-3 py-1 rounded text-sm">篩選</button>
+            </div>
+        </div>
+
+        <!-- KPI 摘要卡片 -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
+                <p class="text-sm font-medium text-gray-500">總收入</p>
+                <h3 class="text-2xl font-bold text-gray-900 mt-1" id="kpi-income">$0</h3>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-red-500">
+                <p class="text-sm font-medium text-gray-500">總支出</p>
+                <h3 class="text-2xl font-bold text-gray-900 mt-1" id="kpi-expense">$0</h3>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
+                <p class="text-sm font-medium text-gray-500">淨結餘</p>
+                <h3 class="text-2xl font-bold text-gray-900 mt-1" id="kpi-balance">$0</h3>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-purple-500">
+                <p class="text-sm font-medium text-gray-500">儲蓄率</p>
+                <h3 class="text-2xl font-bold text-gray-900 mt-1" id="kpi-rate">0%</h3>
+            </div>
+        </div>
+
+        <!-- 圖表區域 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div class="bg-white p-5 rounded-xl shadow-sm">
+                <h4 class="font-bold text-gray-800 mb-4">支出類別分佈</h4>
+                <div class="h-64"><canvas id="categoryChart"></canvas></div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm">
+                <h4 class="font-bold text-gray-800 mb-4">每日收支趨勢圖</h4>
+                <div class="h-64"><canvas id="trendChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- 交易明細表格 -->
+        <div class="bg-white p-5 rounded-xl shadow-sm">
+            <div class="flex justify-between items-center mb-4">
+                <h4 class="font-bold text-gray-800">收支明細表</h4>
+                <input type="text" id="search-input" onkeyup="filterTable()" placeholder="搜尋項目/備註/付款方式..." 
+                       class="border rounded-lg px-3 py-1.5 text-sm w-60">
+            </div>
+            <div class="overflow-x-auto max-h-96">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-gray-50 text-gray-600 border-b">
+                            <th class="p-3">日期</th>
+                            <th class="p-3">交易項目</th>
+                            <th class="p-3">型態</th>
+                            <th class="p-3">類別</th>
+                            <th class="p-3">金額</th>
+                            <th class="p-3">付款方式</th>
+                            <th class="p-3">備註</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-table-body" class="divide-y text-gray-700">
+                        <!-- 動態插入列 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rawData = [];
+        let filteredData = [];
+        let categoryChart, trendChart;
+
+        // 初始化
+        window.onload = function() {
+            const savedUrl = localStorage.getItem('gsheet_csv_url');
+            if (savedUrl) {
+                document.getElementById('sheet-url').value = savedUrl;
+                fetchData(savedUrl);
+            }
+        };
+
+        function saveAndSync() {
+            const url = document.getElementById('sheet-url').value.trim();
+            if (!url) return alert('請先輸入 Google Sheets 發佈的 CSV 網址');
+            localStorage.setItem('gsheet_csv_url', url);
+            fetchData(url);
+        }
+
+        function fetchData(url) {
+            document.getElementById('status-text').innerText = '狀態：正在讀取數據...';
+            Papa.parse(url, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    rawData = results.data;
+                    document.getElementById('status-text').innerText = `狀態：已同步，共 ${rawData.length} 筆資料`;
+                    setDateRange('all');
+                },
+                error: function(err) {
+                    document.getElementById('status-text').innerText = '狀態：讀取失敗，請確認網址為發佈的 CSV 格式';
+                    console.error(err);
+                }
+            });
+        }
+
+        function processAndRender() {
+            renderKPIs();
+            renderCharts();
+            renderTable();
+        }
+
+        function setDateRange(range) {
+            const now = new Date();
+            if (range === 'all') {
+                filteredData = [...rawData];
+            } else if (range === 'thisMonth') {
+                const yearMonth = now.toISOString().slice(0, 7);
+                filteredData = rawData.filter(d => d.日期 && d.日期.startsWith(yearMonth));
+            } else if (range === 'lastMonth') {
+                const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const yearMonth = prev.toISOString().slice(0, 7);
+                filteredData = rawData.filter(d => d.日期 && d.日期.startsWith(yearMonth));
+            }
+            processAndRender();
+        }
+
+        function filterByCustomDate() {
+            const start = document.getElementById('start-date').value;
+            const end = document.getElementById('end-date').value;
+            if (!start || !end) return alert('請選擇完整的起止日期');
+
+            filteredData = rawData.filter(d => {
+                if (!d.日期) return false;
+                return d.日期 >= start && d.日期 <= end;
+            });
+            processAndRender();
+        }
+
+        function renderKPIs() {
+            let income = 0, expense = 0;
+            filteredData.forEach(d => {
+                const amt = parseFloat(d.金額) || 0;
+                if (d.交易型態 === '收入') income += amt;
+                else if (d.交易型態 === '支出') expense += amt;
+            });
+
+            const balance = income - expense;
+            const rate = income > 0 ? ((balance / income) * 100).toFixed(1) : 0;
+
+            document.getElementById('kpi-income').innerText = '$' + income.toLocaleString();
+            document.getElementById('kpi-expense').innerText = '$' + expense.toLocaleString();
+            document.getElementById('kpi-balance').innerText = '$' + balance.toLocaleString();
+            document.getElementById('kpi-rate').innerText = rate + '%';
+        }
+
+        function renderCharts() {
+            // 類別統計 (支出)
+            const catMap = {};
+            // 日期趨勢
+            const dateMap = {};
+
+            filteredData.forEach(d => {
+                const amt = parseFloat(d.金額) || 0;
+                if (d.交易型態 === '支出') {
+                    catMap[d.類別] = (catMap[d.類別] || 0) + amt;
+                }
+                if (d.日期) {
+                    if (!dateMap[d.日期]) dateMap[d.日期] = { income: 0, expense: 0 };
+                    if (d.交易型態 === '收入') dateMap[d.日期].income += amt;
+                    if (d.交易型態 === '支出') dateMap[d.日期].expense += amt;
+                }
+            });
+
+            // 銷毀舊圖表
+            if (categoryChart) categoryChart.destroy();
+            if (trendChart) trendChart.destroy();
+
+            // 支出類別圓餅圖
+            categoryChart = new Chart(document.getElementById('categoryChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(catMap),
+                    datasets: [{
+                        data: Object.values(catMap),
+                        backgroundColor: ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#9ca3af']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 日期趨勢折線圖
+            const sortedDates = Object.keys(dateMap).sort();
+            trendChart = new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: sortedDates,
+                    datasets: [
+                        {
+                            label: '支出',
+                            data: sortedDates.map(d => dateMap[d].expense),
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            fill: true,
+                            tension: 0.2
+                        },
+                        {
+                            label: '收入',
+                            data: sortedDates.map(d => dateMap[d].income),
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: true,
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('data-table-body');
+            tbody.innerHTML = '';
+            filteredData.forEach(d => {
+                const tr = document.createElement('tr');
+                const isIncome = d.交易型態 === '收入';
+                tr.innerHTML = `
+                    <td class="p-3">${d.日期 || ''}</td>
+                    <td class="p-3 font-medium">${d.交易項目 || ''}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded text-xs ${isIncome ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${d.交易型態 || ''}</span></td>
+                    <td class="p-3">${d.類別 || ''}</td>
+                    <td class="p-3 font-bold ${isIncome ? 'text-green-600' : 'text-red-600'}">$${(parseFloat(d.金額) || 0).toLocaleString()}</td>
+                    <td class="p-3">${d.付款方式 || ''}</td>
+                    <td class="p-3 text-gray-500">${d.備註 || ''}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterTable() {
+            const q = document.getElementById('search-input').value.toLowerCase();
+            const rows = document.querySelectorAll('#data-table-body tr');
+            rows.forEach(r => {
+                const text = r.innerText.toLowerCase();
+                r.style.display = text.includes(q) ? '' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>
