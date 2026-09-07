@@ -98,11 +98,11 @@
         <!-- KPI 指標 -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500">
-                <p class="text-xs font-medium text-gray-500">總收入</p>
+                <p class="text-xs font-medium text-gray-500">總收入 (不受交易型態篩選影響)</p>
                 <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-income">$0</h3>
             </div>
             <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500">
-                <p class="text-xs font-medium text-gray-500">總支出</p>
+                <p class="text-xs font-medium text-gray-500">總支出 (不受交易型態篩選影響)</p>
                 <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-expense">$0</h3>
             </div>
             <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500">
@@ -118,12 +118,12 @@
         <!-- 圖表展示區 -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div class="bg-white p-5 rounded-xl shadow-sm">
-                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支類別分佈</h4>
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支類別分佈 (金額佔比)</h4>
                 <div class="h-64"><canvas id="categoryChart"></canvas></div>
             </div>
             <div class="bg-white p-5 rounded-xl shadow-sm">
-                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支時間趨勢圖</h4>
-                <div class="h-64"><canvas id="trendChart"></canvas></div>
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支幣別分佈</h4>
+                <div class="h-64"><canvas id="currencyChart"></canvas></div>
             </div>
             <div class="bg-white p-5 rounded-xl shadow-sm">
                 <h4 class="font-bold text-gray-800 mb-4 text-sm">收支付款方式分佈</h4>
@@ -171,7 +171,7 @@
 
         let rawData = [];
         let filteredData = [];
-        let categoryChart, trendChart, paymentChart, personChart;
+        let categoryChart, currencyChart, paymentChart, personChart;
         let currentTimeRange = 'all';
 
         const filterKeys = {
@@ -214,6 +214,7 @@
             });
         }
 
+        // 核心交叉篩選邏輯
         function getFilteredDataset(excludeField = null) {
             const startDate = document.getElementById('start-date').value;
             const endDate = document.getElementById('end-date').value;
@@ -315,8 +316,10 @@
         }
 
         function renderKPIs() {
+            // 總收入、總支出、淨結餘不受交易型態篩選影響，排除 'type' 條件進行統計
+            const kpiData = getFilteredDataset('type');
             let income = 0, expense = 0;
-            filteredData.forEach(d => {
+            kpiData.forEach(d => {
                 const amt = parseFloat(d.金額) || 0;
                 if (d.交易型態 === '收入') income += amt;
                 else if (d.交易型態 === '支出') expense += amt;
@@ -334,29 +337,23 @@
         function renderCharts() {
             const selectedType = document.getElementById('filter-type').value;
 
-            const catMap = {}, dateMap = {}, paymentMap = {}, personMap = {};
+            const catMap = {}, currencyMap = {}, paymentMap = {}, personMap = {};
 
             filteredData.forEach(d => {
                 const amt = parseFloat(d.金額) || 0;
-                const type = d.交易型態;
 
                 if (d.類別) catMap[d.類別] = (catMap[d.類別] || 0) + amt;
+                if (d.幣別) currencyMap[d.幣別] = (currencyMap[d.幣別] || 0) + amt;
                 if (d.付款方式) paymentMap[d.付款方式] = (paymentMap[d.付款方式] || 0) + amt;
                 if (d.人員) personMap[d.人員] = (personMap[d.人員] || 0) + amt;
-
-                if (d.日期) {
-                    if (!dateMap[d.日期]) dateMap[d.日期] = { income: 0, expense: 0, total: 0 };
-                    if (type === '收入') dateMap[d.日期].income += amt;
-                    if (type === '支出') dateMap[d.日期].expense += amt;
-                    dateMap[d.日期].total += amt;
-                }
             });
 
-            [categoryChart, trendChart, paymentChart, personChart].forEach(c => c && c.destroy());
+            [categoryChart, currencyChart, paymentChart, personChart].forEach(c => c && c.destroy());
 
             const isIncome = selectedType === '收入';
+            const labelText = selectedType ? `${selectedType}金額` : '金額';
 
-            // 1. 收支類別分佈 (圓餅圖)
+            // 1. 收支類別分佈 (圓餅圖 - 標籤顯示百分比，懸浮提示顯示金額與百分比)
             categoryChart = new Chart(document.getElementById('categoryChart'), {
                 type: 'doughnut',
                 data: {
@@ -371,46 +368,40 @@
                     maintainAspectRatio: false,
                     plugins: {
                         datalabels: {
-                            formatter: (value) => value ? '$' + value.toLocaleString() : '',
+                            formatter: (value, ctx) => {
+                                const sum = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                if (!sum || !value) return '';
+                                return ((value * 100) / sum).toFixed(1) + '%';
+                            },
                             color: '#fff',
                             font: { weight: 'bold', size: 11 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const val = context.raw || 0;
+                                    const sum = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const pct = sum ? ((val * 100) / sum).toFixed(1) : 0;
+                                    return ` ${label}: $${val.toLocaleString()} (${pct}%)`;
+                                }
+                            }
                         }
                     }
                 }
             });
 
-            // 2. 收支時間趨勢圖 (折線圖)
-            const sortedDates = Object.keys(dateMap).sort();
-            let trendDatasets = [];
-
-            if (selectedType === '支出') {
-                trendDatasets.push({
-                    label: '支出金額',
-                    data: sortedDates.map(d => dateMap[d].expense),
-                    borderColor: '#ef4444',
-                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                    fill: true,
-                    tension: 0.2
-                });
-            } else if (selectedType === '收入') {
-                trendDatasets.push({
-                    label: '收入金額',
-                    data: sortedDates.map(d => dateMap[d].income),
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    fill: true,
-                    tension: 0.2
-                });
-            } else {
-                trendDatasets.push(
-                    { label: '支出', data: sortedDates.map(d => dateMap[d].expense), borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.2 },
-                    { label: '收入', data: sortedDates.map(d => dateMap[d].income), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.2 }
-                );
-            }
-
-            trendChart = new Chart(document.getElementById('trendChart'), {
-                type: 'line',
-                data: { labels: sortedDates, datasets: trendDatasets },
+            // 2. 收支幣別分佈 (柱狀圖)
+            currencyChart = new Chart(document.getElementById('currencyChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(currencyMap),
+                    datasets: [{
+                        label: labelText,
+                        data: Object.values(currencyMap),
+                        backgroundColor: isIncome ? '#10b981' : '#f59e0b'
+                    }]
+                },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -427,8 +418,7 @@
                 }
             });
 
-            // 3. 收支付款方式分佈 (條形圖)
-            const labelText = selectedType ? `${selectedType}金額` : '金額';
+            // 3. 收支付款方式分佈 (柱狀圖)
             paymentChart = new Chart(document.getElementById('paymentChart'), {
                 type: 'bar',
                 data: {
@@ -455,7 +445,7 @@
                 }
             });
 
-            // 4. 人員收支分佈 (條形圖)
+            // 4. 人員收支分佈 (柱狀圖)
             personChart = new Chart(document.getElementById('personChart'), {
                 type: 'bar',
                 data: {
