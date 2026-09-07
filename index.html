@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chart.js DataLabels 外掛 -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <!-- PapaParse -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
@@ -61,7 +63,7 @@
             <!-- 5 維度下拉選單網格 -->
             <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div>
-                    <label class="block text-xs font-semibold text-gray-500 mb-1">交易型態</label>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">交易型態 (預設支出)</label>
                     <select id="filter-type" onchange="onFilterChange()" class="w-full border rounded-lg p-2 text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500">
                         <option value="">全部型態</option>
                     </select>
@@ -116,7 +118,7 @@
         <!-- 圖表展示區 -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div class="bg-white p-5 rounded-xl shadow-sm">
-                <h4 class="font-bold text-gray-800 mb-4 text-sm">支出類別分佈</h4>
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支類別分佈</h4>
                 <div class="h-64"><canvas id="categoryChart"></canvas></div>
             </div>
             <div class="bg-white p-5 rounded-xl shadow-sm">
@@ -124,11 +126,11 @@
                 <div class="h-64"><canvas id="trendChart"></canvas></div>
             </div>
             <div class="bg-white p-5 rounded-xl shadow-sm">
-                <h4 class="font-bold text-gray-800 mb-4 text-sm">付款方式分佈</h4>
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支付款方式分佈</h4>
                 <div class="h-64"><canvas id="paymentChart"></canvas></div>
             </div>
             <div class="bg-white p-5 rounded-xl shadow-sm">
-                <h4 class="font-bold text-gray-800 mb-4 text-sm">人員支出分佈</h4>
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">人員收支分佈</h4>
                 <div class="h-64"><canvas id="personChart"></canvas></div>
             </div>
         </div>
@@ -164,6 +166,9 @@
     </div>
 
     <script>
+        // 註冊 DataLabels 插件
+        Chart.register(ChartDataLabels);
+
         let rawData = [];
         let filteredData = [];
         let categoryChart, trendChart, paymentChart, personChart;
@@ -209,13 +214,11 @@
             });
         }
 
-        // 核心交叉篩選邏輯：獲取數據（可排除特定維度以供下拉選單聯動）
         function getFilteredDataset(excludeField = null) {
             const startDate = document.getElementById('start-date').value;
             const endDate = document.getElementById('end-date').value;
 
             return rawData.filter(d => {
-                // 1. 時間篩選
                 if (currentTimeRange === 'thisMonth') {
                     const now = new Date().toISOString().slice(0, 7);
                     if (!d.日期 || !d.日期.startsWith(now)) return false;
@@ -229,9 +232,8 @@
                     if (endDate && d.日期 > endDate) return false;
                 }
 
-                // 2. 五維度條件
                 for (const [key, colName] of Object.entries(filterKeys)) {
-                    if (key === excludeField) continue; // 跳過被排除的維度
+                    if (key === excludeField) continue;
                     const val = document.getElementById(`filter-${key}`).value;
                     if (val && d[colName] !== val) return false;
                 }
@@ -240,17 +242,14 @@
             });
         }
 
-        // 更新下拉選單（自動動態隱藏/顯示可選項）
         function updateDropdownOptions() {
             for (const [key, colName] of Object.entries(filterKeys)) {
                 const selectEl = document.getElementById(`filter-${key}`);
                 const currentVal = selectEl.value;
 
-                // 取得在其他條件約束下的可用資料集
                 const availableData = getFilteredDataset(key);
                 const uniqueOptions = [...new Set(availableData.map(d => d[colName]).filter(Boolean))].sort();
 
-                // 重新填充下拉選單
                 selectEl.innerHTML = `<option value="">全部${filterKeys[key]}</option>`;
                 uniqueOptions.forEach(optVal => {
                     const opt = document.createElement('option');
@@ -260,7 +259,6 @@
                     selectEl.appendChild(opt);
                 });
 
-                // 若原本選取的值在新的集合中不存在，則重置為空
                 if (currentVal && !uniqueOptions.includes(currentVal)) {
                     selectEl.value = '';
                 }
@@ -300,6 +298,13 @@
                 document.getElementById(`filter-${key}`).value = '';
             }
 
+            // 初始化下拉選單並將預設交易型態設為「支出」
+            updateDropdownOptions();
+            const typeSelect = document.getElementById('filter-type');
+            if (Array.from(typeSelect.options).some(o => o.value === '支出')) {
+                typeSelect.value = '支出';
+            }
+
             onFilterChange();
         }
 
@@ -327,73 +332,154 @@
         }
 
         function renderCharts() {
+            const selectedType = document.getElementById('filter-type').value;
+
             const catMap = {}, dateMap = {}, paymentMap = {}, personMap = {};
 
             filteredData.forEach(d => {
                 const amt = parseFloat(d.金額) || 0;
                 const type = d.交易型態;
 
-                if (type === '支出') {
-                    if (d.類別) catMap[d.類別] = (catMap[d.類別] || 0) + amt;
-                    if (d.付款方式) paymentMap[d.付款方式] = (paymentMap[d.付款方式] || 0) + amt;
-                    if (d.人員) personMap[d.人員] = (personMap[d.人員] || 0) + amt;
-                }
+                if (d.類別) catMap[d.類別] = (catMap[d.類別] || 0) + amt;
+                if (d.付款方式) paymentMap[d.付款方式] = (paymentMap[d.付款方式] || 0) + amt;
+                if (d.人員) personMap[d.人員] = (personMap[d.人員] || 0) + amt;
 
                 if (d.日期) {
-                    if (!dateMap[d.日期]) dateMap[d.日期] = { income: 0, expense: 0 };
+                    if (!dateMap[d.日期]) dateMap[d.日期] = { income: 0, expense: 0, total: 0 };
                     if (type === '收入') dateMap[d.日期].income += amt;
                     if (type === '支出') dateMap[d.日期].expense += amt;
+                    dateMap[d.日期].total += amt;
                 }
             });
 
-            // 銷毀舊圖表
             [categoryChart, trendChart, paymentChart, personChart].forEach(c => c && c.destroy());
 
-            // 1. 類別圓餅圖
+            const isIncome = selectedType === '收入';
+
+            // 1. 收支類別分佈 (圓餅圖)
             categoryChart = new Chart(document.getElementById('categoryChart'), {
                 type: 'doughnut',
                 data: {
                     labels: Object.keys(catMap),
                     datasets: [{
                         data: Object.values(catMap),
-                        backgroundColor: ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#9ca3af', '#f97316']
+                        backgroundColor: ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#9ca3af', '#f97316', '#38bdf8']
                     }]
                 },
-                options: { responsive: true, maintainAspectRatio: false }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        datalabels: {
+                            formatter: (value) => value ? '$' + value.toLocaleString() : '',
+                            color: '#fff',
+                            font: { weight: 'bold', size: 11 }
+                        }
+                    }
+                }
             });
 
-            // 2. 趨勢圖
+            // 2. 收支時間趨勢圖 (折線圖)
             const sortedDates = Object.keys(dateMap).sort();
+            let trendDatasets = [];
+
+            if (selectedType === '支出') {
+                trendDatasets.push({
+                    label: '支出金額',
+                    data: sortedDates.map(d => dateMap[d].expense),
+                    borderColor: '#ef4444',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    fill: true,
+                    tension: 0.2
+                });
+            } else if (selectedType === '收入') {
+                trendDatasets.push({
+                    label: '收入金額',
+                    data: sortedDates.map(d => dateMap[d].income),
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    tension: 0.2
+                });
+            } else {
+                trendDatasets.push(
+                    { label: '支出', data: sortedDates.map(d => dateMap[d].expense), borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.2 },
+                    { label: '收入', data: sortedDates.map(d => dateMap[d].income), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.2 }
+                );
+            }
+
             trendChart = new Chart(document.getElementById('trendChart'), {
                 type: 'line',
-                data: {
-                    labels: sortedDates,
-                    datasets: [
-                        { label: '支出', data: sortedDates.map(d => dateMap[d].expense), borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true },
-                        { label: '收入', data: sortedDates.map(d => dateMap[d].income), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true }
-                    ]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
+                data: { labels: sortedDates, datasets: trendDatasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 25 } },
+                    plugins: {
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            formatter: (value) => value ? '$' + value.toLocaleString() : '',
+                            font: { size: 10, weight: 'bold' },
+                            color: '#374151'
+                        }
+                    }
+                }
             });
 
-            // 3. 付款方式條形圖
+            // 3. 收支付款方式分佈 (條形圖)
+            const labelText = selectedType ? `${selectedType}金額` : '金額';
             paymentChart = new Chart(document.getElementById('paymentChart'), {
                 type: 'bar',
                 data: {
                     labels: Object.keys(paymentMap),
-                    datasets: [{ label: '支出金額', data: Object.values(paymentMap), backgroundColor: '#3b82f6' }]
+                    datasets: [{
+                        label: labelText,
+                        data: Object.values(paymentMap),
+                        backgroundColor: isIncome ? '#10b981' : '#3b82f6'
+                    }]
                 },
-                options: { responsive: true, maintainAspectRatio: false }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 25 } },
+                    plugins: {
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            formatter: (value) => value ? '$' + value.toLocaleString() : '',
+                            font: { size: 10, weight: 'bold' },
+                            color: '#374151'
+                        }
+                    }
+                }
             });
 
-            // 4. 人員條形圖
+            // 4. 人員收支分佈 (條形圖)
             personChart = new Chart(document.getElementById('personChart'), {
                 type: 'bar',
                 data: {
                     labels: Object.keys(personMap),
-                    datasets: [{ label: '支出金額', data: Object.values(personMap), backgroundColor: '#8b5cf6' }]
+                    datasets: [{
+                        label: labelText,
+                        data: Object.values(personMap),
+                        backgroundColor: isIncome ? '#34d399' : '#8b5cf6'
+                    }]
                 },
-                options: { responsive: true, maintainAspectRatio: false }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 25 } },
+                    plugins: {
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'top',
+                            formatter: (value) => value ? '$' + value.toLocaleString() : '',
+                            font: { size: 10, weight: 'bold' },
+                            color: '#374151'
+                        }
+                    }
+                }
             });
         }
 
