@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>個人收支互動財務儀表板</title>
+    <title>個人收支多維度互動財務儀表板</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- PapaParse for CSV parsing -->
+    <!-- PapaParse -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
@@ -20,7 +20,7 @@
         <!-- 頁首與設定 -->
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-xl shadow-sm mb-6">
             <div>
-                <h1 class="text-2xl font-bold text-gray-900">📊 個人收支互動儀表板</h1>
+                <h1 class="text-2xl font-bold text-gray-900">📊 個人收支多維度互動儀表板</h1>
                 <p class="text-sm text-gray-500 mt-1" id="status-text">狀態：未連接資料來源</p>
             </div>
             
@@ -28,80 +28,135 @@
                 <input type="text" id="sheet-url" placeholder="貼上 Google Sheets 發佈的 CSV 網址..." 
                        class="px-4 py-2 border rounded-lg w-full sm:w-80 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <button onclick="saveAndSync()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
-                    同步資料
+                    同步數據
                 </button>
             </div>
         </div>
 
-        <!-- 篩選器列 -->
-        <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex flex-wrap items-center gap-4">
-            <span class="font-semibold text-sm text-gray-700">時間區段：</span>
-            <button onclick="setDateRange('all')" class="filter-btn bg-blue-50 text-blue-600 font-medium px-3 py-1.5 rounded-lg text-sm">全部</button>
-            <button onclick="setDateRange('thisMonth')" class="filter-btn bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm">本月</button>
-            <button onclick="setDateRange('lastMonth')" class="filter-btn bg-gray-100 text-gray-600 px-3 py-1.5 rounded-lg text-sm">上個月</button>
-            
-            <div class="flex items-center gap-2 ml-auto">
-                <input type="date" id="start-date" class="border rounded px-2 py-1 text-sm">
-                <span class="text-gray-400">至</span>
-                <input type="date" id="end-date" class="border rounded px-2 py-1 text-sm">
-                <button onclick="filterByCustomDate()" class="bg-gray-800 text-white px-3 py-1 rounded text-sm">篩選</button>
+        <!-- 交叉篩選控制面板 -->
+        <div class="bg-white p-5 rounded-xl shadow-sm mb-6 border border-gray-100">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="font-bold text-gray-800 text-base flex items-center gap-2">
+                    <span>🔍</span> 多維度交叉篩選器
+                </h3>
+                <button onclick="resetAllFilters()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg transition font-medium">
+                    🔄 重設所有篩選
+                </button>
+            </div>
+
+            <!-- 時間區段選單 -->
+            <div class="flex flex-wrap items-center gap-2 pb-3 mb-4 border-b border-gray-100 text-sm">
+                <span class="font-semibold text-gray-600 mr-1">時間：</span>
+                <button onclick="setDateQuickFilter('all')" id="btn-time-all" class="time-btn bg-blue-50 text-blue-600 font-medium px-3 py-1 rounded-lg">全部</button>
+                <button onclick="setDateQuickFilter('thisMonth')" id="btn-time-thisMonth" class="time-btn bg-gray-100 text-gray-600 px-3 py-1 rounded-lg">本月</button>
+                <button onclick="setDateQuickFilter('lastMonth')" id="btn-time-lastMonth" class="time-btn bg-gray-100 text-gray-600 px-3 py-1 rounded-lg">上個月</button>
+                
+                <div class="flex items-center gap-2 ml-auto">
+                    <input type="date" id="start-date" onchange="onFilterChange()" class="border rounded px-2 py-1 text-xs">
+                    <span class="text-gray-400 text-xs">至</span>
+                    <input type="date" id="end-date" onchange="onFilterChange()" class="border rounded px-2 py-1 text-xs">
+                </div>
+            </div>
+
+            <!-- 5 維度下拉選單網格 -->
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">交易型態</label>
+                    <select id="filter-type" onchange="onFilterChange()" class="w-full border rounded-lg p-2 text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <option value="">全部型態</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">幣別</label>
+                    <select id="filter-currency" onchange="onFilterChange()" class="w-full border rounded-lg p-2 text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <option value="">全部幣別</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">人員</label>
+                    <select id="filter-person" onchange="onFilterChange()" class="w-full border rounded-lg p-2 text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <option value="">全部人員</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">類別</label>
+                    <select id="filter-category" onchange="onFilterChange()" class="w-full border rounded-lg p-2 text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <option value="">全部類別</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">付款方式</label>
+                    <select id="filter-payment" onchange="onFilterChange()" class="w-full border rounded-lg p-2 text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <option value="">全部付款方式</option>
+                    </select>
+                </div>
             </div>
         </div>
 
-        <!-- KPI 摘要卡片 -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
-                <p class="text-sm font-medium text-gray-500">總收入</p>
-                <h3 class="text-2xl font-bold text-gray-900 mt-1" id="kpi-income">$0</h3>
+        <!-- KPI 指標 -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500">
+                <p class="text-xs font-medium text-gray-500">總收入</p>
+                <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-income">$0</h3>
             </div>
-            <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-red-500">
-                <p class="text-sm font-medium text-gray-500">總支出</p>
-                <h3 class="text-2xl font-bold text-gray-900 mt-1" id="kpi-expense">$0</h3>
+            <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500">
+                <p class="text-xs font-medium text-gray-500">總支出</p>
+                <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-expense">$0</h3>
             </div>
-            <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
-                <p class="text-sm font-medium text-gray-500">淨結餘</p>
-                <h3 class="text-2xl font-bold text-gray-900 mt-1" id="kpi-balance">$0</h3>
+            <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500">
+                <p class="text-xs font-medium text-gray-500">淨結餘</p>
+                <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-balance">$0</h3>
             </div>
-            <div class="bg-white p-5 rounded-xl shadow-sm border-l-4 border-purple-500">
-                <p class="text-sm font-medium text-gray-500">儲蓄率</p>
-                <h3 class="text-2xl font-bold text-gray-900 mt-1" id="kpi-rate">0%</h3>
+            <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-purple-500">
+                <p class="text-xs font-medium text-gray-500">篩選筆數 / 儲蓄率</p>
+                <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-rate">0 筆 (0%)</h3>
             </div>
         </div>
 
-        <!-- 圖表區域 -->
+        <!-- 圖表展示區 -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div class="bg-white p-5 rounded-xl shadow-sm">
-                <h4 class="font-bold text-gray-800 mb-4">支出類別分佈</h4>
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">支出類別分佈</h4>
                 <div class="h-64"><canvas id="categoryChart"></canvas></div>
             </div>
             <div class="bg-white p-5 rounded-xl shadow-sm">
-                <h4 class="font-bold text-gray-800 mb-4">每日收支趨勢圖</h4>
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支時間趨勢圖</h4>
                 <div class="h-64"><canvas id="trendChart"></canvas></div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm">
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">付款方式分佈</h4>
+                <div class="h-64"><canvas id="paymentChart"></canvas></div>
+            </div>
+            <div class="bg-white p-5 rounded-xl shadow-sm">
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">人員支出分佈</h4>
+                <div class="h-64"><canvas id="personChart"></canvas></div>
             </div>
         </div>
 
-        <!-- 交易明細表格 -->
+        <!-- 明細表格 -->
         <div class="bg-white p-5 rounded-xl shadow-sm">
-            <div class="flex justify-between items-center mb-4">
-                <h4 class="font-bold text-gray-800">收支明細表</h4>
-                <input type="text" id="search-input" onkeyup="filterTable()" placeholder="搜尋項目/備註/付款方式..." 
-                       class="border rounded-lg px-3 py-1.5 text-sm w-60">
+            <div class="flex flex-col sm:flex-row justify-between items-center gap-3 mb-4">
+                <h4 class="font-bold text-gray-800 text-sm">交易明細列表</h4>
+                <input type="text" id="search-input" onkeyup="renderTable()" placeholder="搜尋關鍵字 (項目/備註)..." 
+                       class="border rounded-lg px-3 py-1.5 text-xs w-full sm:w-64">
             </div>
             <div class="overflow-x-auto max-h-96">
-                <table class="w-full text-left border-collapse text-sm">
+                <table class="w-full text-left border-collapse text-xs">
                     <thead>
                         <tr class="bg-gray-50 text-gray-600 border-b">
                             <th class="p-3">日期</th>
                             <th class="p-3">交易項目</th>
                             <th class="p-3">型態</th>
-                            <th class="p-3">類別</th>
+                            <th class="p-3">幣別</th>
                             <th class="p-3">金額</th>
+                            <th class="p-3">人員</th>
+                            <th class="p-3">類別</th>
                             <th class="p-3">付款方式</th>
                             <th class="p-3">備註</th>
                         </tr>
                     </thead>
                     <tbody id="data-table-body" class="divide-y text-gray-700">
-                        <!-- 動態插入列 -->
+                        <!-- 動態資料列 -->
                     </tbody>
                 </table>
             </div>
@@ -111,9 +166,17 @@
     <script>
         let rawData = [];
         let filteredData = [];
-        let categoryChart, trendChart;
+        let categoryChart, trendChart, paymentChart, personChart;
+        let currentTimeRange = 'all';
 
-        // 初始化
+        const filterKeys = {
+            type: '交易型態',
+            currency: '幣別',
+            person: '人員',
+            category: '類別',
+            payment: '付款方式'
+        };
+
         window.onload = function() {
             const savedUrl = localStorage.getItem('gsheet_csv_url');
             if (savedUrl) {
@@ -124,60 +187,126 @@
 
         function saveAndSync() {
             const url = document.getElementById('sheet-url').value.trim();
-            if (!url) return alert('請先輸入 Google Sheets 發佈的 CSV 網址');
+            if (!url) return alert('請先貼上 Google Sheets 發佈的 CSV 網址');
             localStorage.setItem('gsheet_csv_url', url);
             fetchData(url);
         }
 
         function fetchData(url) {
-            document.getElementById('status-text').innerText = '狀態：正在讀取數據...';
+            document.getElementById('status-text').innerText = '狀態：正在載入數據...';
             Papa.parse(url, {
                 download: true,
                 header: true,
                 skipEmptyLines: true,
                 complete: function(results) {
-                    rawData = results.data;
-                    document.getElementById('status-text').innerText = `狀態：已同步，共 ${rawData.length} 筆資料`;
-                    setDateRange('all');
+                    rawData = results.data.filter(d => d.日期 || d.交易項目);
+                    document.getElementById('status-text').innerText = `狀態：已同步，共 ${rawData.length} 筆明細`;
+                    resetAllFilters();
                 },
                 error: function(err) {
-                    document.getElementById('status-text').innerText = '狀態：讀取失敗，請確認網址為發佈的 CSV 格式';
-                    console.error(err);
+                    document.getElementById('status-text').innerText = '狀態：載入失敗，請檢查 CSV 網址是否正確';
                 }
             });
         }
 
-        function processAndRender() {
+        // 核心交叉篩選邏輯：獲取數據（可排除特定維度以供下拉選單聯動）
+        function getFilteredDataset(excludeField = null) {
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+
+            return rawData.filter(d => {
+                // 1. 時間篩選
+                if (currentTimeRange === 'thisMonth') {
+                    const now = new Date().toISOString().slice(0, 7);
+                    if (!d.日期 || !d.日期.startsWith(now)) return false;
+                } else if (currentTimeRange === 'lastMonth') {
+                    const prev = new Date();
+                    prev.setMonth(prev.getMonth() - 1);
+                    const prevStr = prev.toISOString().slice(0, 7);
+                    if (!d.日期 || !d.日期.startsWith(prevStr)) return false;
+                } else if (startDate || endDate) {
+                    if (startDate && d.日期 < startDate) return false;
+                    if (endDate && d.日期 > endDate) return false;
+                }
+
+                // 2. 五維度條件
+                for (const [key, colName] of Object.entries(filterKeys)) {
+                    if (key === excludeField) continue; // 跳過被排除的維度
+                    const val = document.getElementById(`filter-${key}`).value;
+                    if (val && d[colName] !== val) return false;
+                }
+
+                return true;
+            });
+        }
+
+        // 更新下拉選單（自動動態隱藏/顯示可選項）
+        function updateDropdownOptions() {
+            for (const [key, colName] of Object.entries(filterKeys)) {
+                const selectEl = document.getElementById(`filter-${key}`);
+                const currentVal = selectEl.value;
+
+                // 取得在其他條件約束下的可用資料集
+                const availableData = getFilteredDataset(key);
+                const uniqueOptions = [...new Set(availableData.map(d => d[colName]).filter(Boolean))].sort();
+
+                // 重新填充下拉選單
+                selectEl.innerHTML = `<option value="">全部${filterKeys[key]}</option>`;
+                uniqueOptions.forEach(optVal => {
+                    const opt = document.createElement('option');
+                    opt.value = optVal;
+                    opt.textContent = optVal;
+                    if (optVal === currentVal) opt.selected = true;
+                    selectEl.appendChild(opt);
+                });
+
+                // 若原本選取的值在新的集合中不存在，則重置為空
+                if (currentVal && !uniqueOptions.includes(currentVal)) {
+                    selectEl.value = '';
+                }
+            }
+        }
+
+        function onFilterChange() {
+            updateDropdownOptions();
+            filteredData = getFilteredDataset();
+            renderAll();
+        }
+
+        function setDateQuickFilter(range) {
+            currentTimeRange = range;
+            document.querySelectorAll('.time-btn').forEach(btn => {
+                btn.className = 'time-btn bg-gray-100 text-gray-600 px-3 py-1 rounded-lg';
+            });
+            document.getElementById(`btn-time-${range}`).className = 'time-btn bg-blue-50 text-blue-600 font-medium px-3 py-1 rounded-lg';
+
+            document.getElementById('start-date').value = '';
+            document.getElementById('end-date').value = '';
+
+            onFilterChange();
+        }
+
+        function resetAllFilters() {
+            currentTimeRange = 'all';
+            document.querySelectorAll('.time-btn').forEach(btn => {
+                btn.className = 'time-btn bg-gray-100 text-gray-600 px-3 py-1 rounded-lg';
+            });
+            document.getElementById('btn-time-all').className = 'time-btn bg-blue-50 text-blue-600 font-medium px-3 py-1 rounded-lg';
+
+            document.getElementById('start-date').value = '';
+            document.getElementById('end-date').value = '';
+
+            for (const key of Object.keys(filterKeys)) {
+                document.getElementById(`filter-${key}`).value = '';
+            }
+
+            onFilterChange();
+        }
+
+        function renderAll() {
             renderKPIs();
             renderCharts();
             renderTable();
-        }
-
-        function setDateRange(range) {
-            const now = new Date();
-            if (range === 'all') {
-                filteredData = [...rawData];
-            } else if (range === 'thisMonth') {
-                const yearMonth = now.toISOString().slice(0, 7);
-                filteredData = rawData.filter(d => d.日期 && d.日期.startsWith(yearMonth));
-            } else if (range === 'lastMonth') {
-                const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                const yearMonth = prev.toISOString().slice(0, 7);
-                filteredData = rawData.filter(d => d.日期 && d.日期.startsWith(yearMonth));
-            }
-            processAndRender();
-        }
-
-        function filterByCustomDate() {
-            const start = document.getElementById('start-date').value;
-            const end = document.getElementById('end-date').value;
-            if (!start || !end) return alert('請選擇完整的起止日期');
-
-            filteredData = rawData.filter(d => {
-                if (!d.日期) return false;
-                return d.日期 >= start && d.日期 <= end;
-            });
-            processAndRender();
         }
 
         function renderKPIs() {
@@ -194,98 +323,103 @@
             document.getElementById('kpi-income').innerText = '$' + income.toLocaleString();
             document.getElementById('kpi-expense').innerText = '$' + expense.toLocaleString();
             document.getElementById('kpi-balance').innerText = '$' + balance.toLocaleString();
-            document.getElementById('kpi-rate').innerText = rate + '%';
+            document.getElementById('kpi-rate').innerText = `${filteredData.length} 筆 (${rate}%)`;
         }
 
         function renderCharts() {
-            // 類別統計 (支出)
-            const catMap = {};
-            // 日期趨勢
-            const dateMap = {};
+            const catMap = {}, dateMap = {}, paymentMap = {}, personMap = {};
 
             filteredData.forEach(d => {
                 const amt = parseFloat(d.金額) || 0;
-                if (d.交易型態 === '支出') {
-                    catMap[d.類別] = (catMap[d.類別] || 0) + amt;
+                const type = d.交易型態;
+
+                if (type === '支出') {
+                    if (d.類別) catMap[d.類別] = (catMap[d.類別] || 0) + amt;
+                    if (d.付款方式) paymentMap[d.付款方式] = (paymentMap[d.付款方式] || 0) + amt;
+                    if (d.人員) personMap[d.人員] = (personMap[d.人員] || 0) + amt;
                 }
+
                 if (d.日期) {
                     if (!dateMap[d.日期]) dateMap[d.日期] = { income: 0, expense: 0 };
-                    if (d.交易型態 === '收入') dateMap[d.日期].income += amt;
-                    if (d.交易型態 === '支出') dateMap[d.日期].expense += amt;
+                    if (type === '收入') dateMap[d.日期].income += amt;
+                    if (type === '支出') dateMap[d.日期].expense += amt;
                 }
             });
 
             // 銷毀舊圖表
-            if (categoryChart) categoryChart.destroy();
-            if (trendChart) trendChart.destroy();
+            [categoryChart, trendChart, paymentChart, personChart].forEach(c => c && c.destroy());
 
-            // 支出類別圓餅圖
+            // 1. 類別圓餅圖
             categoryChart = new Chart(document.getElementById('categoryChart'), {
                 type: 'doughnut',
                 data: {
                     labels: Object.keys(catMap),
                     datasets: [{
                         data: Object.values(catMap),
-                        backgroundColor: ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#9ca3af']
+                        backgroundColor: ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#f472b6', '#9ca3af', '#f97316']
                     }]
                 },
                 options: { responsive: true, maintainAspectRatio: false }
             });
 
-            // 日期趨勢折線圖
+            // 2. 趨勢圖
             const sortedDates = Object.keys(dateMap).sort();
             trendChart = new Chart(document.getElementById('trendChart'), {
                 type: 'line',
                 data: {
                     labels: sortedDates,
                     datasets: [
-                        {
-                            label: '支出',
-                            data: sortedDates.map(d => dateMap[d].expense),
-                            borderColor: '#ef4444',
-                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                            fill: true,
-                            tension: 0.2
-                        },
-                        {
-                            label: '收入',
-                            data: sortedDates.map(d => dateMap[d].income),
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            fill: true,
-                            tension: 0.2
-                        }
+                        { label: '支出', data: sortedDates.map(d => dateMap[d].expense), borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true },
+                        { label: '收入', data: sortedDates.map(d => dateMap[d].income), borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true }
                     ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 3. 付款方式條形圖
+            paymentChart = new Chart(document.getElementById('paymentChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(paymentMap),
+                    datasets: [{ label: '支出金額', data: Object.values(paymentMap), backgroundColor: '#3b82f6' }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            // 4. 人員條形圖
+            personChart = new Chart(document.getElementById('personChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(personMap),
+                    datasets: [{ label: '支出金額', data: Object.values(personMap), backgroundColor: '#8b5cf6' }]
                 },
                 options: { responsive: true, maintainAspectRatio: false }
             });
         }
 
         function renderTable() {
+            const query = document.getElementById('search-input').value.toLowerCase();
             const tbody = document.getElementById('data-table-body');
             tbody.innerHTML = '';
+
             filteredData.forEach(d => {
+                const searchTarget = `${d.交易項目 || ''} ${d.備註 || ''} ${d.付款方式 || ''} ${d.類別 || ''}`.toLowerCase();
+                if (query && !searchTarget.includes(query)) return;
+
                 const tr = document.createElement('tr');
                 const isIncome = d.交易型態 === '收入';
                 tr.innerHTML = `
                     <td class="p-3">${d.日期 || ''}</td>
                     <td class="p-3 font-medium">${d.交易項目 || ''}</td>
                     <td class="p-3"><span class="px-2 py-0.5 rounded text-xs ${isIncome ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${d.交易型態 || ''}</span></td>
-                    <td class="p-3">${d.類別 || ''}</td>
+                    <td class="p-3">${d.幣別 || '台幣'}</td>
                     <td class="p-3 font-bold ${isIncome ? 'text-green-600' : 'text-red-600'}">$${(parseFloat(d.金額) || 0).toLocaleString()}</td>
+                    <td class="p-3">${d.人員 || ''}</td>
+                    <td class="p-3">${d.類別 || ''}</td>
                     <td class="p-3">${d.付款方式 || ''}</td>
                     <td class="p-3 text-gray-500">${d.備註 || ''}</td>
                 `;
                 tbody.appendChild(tr);
-            });
-        }
-
-        function filterTable() {
-            const q = document.getElementById('search-input').value.toLowerCase();
-            const rows = document.querySelectorAll('#data-table-body tr');
-            rows.forEach(r => {
-                const text = r.innerText.toLowerCase();
-                r.style.display = text.includes(q) ? '' : 'none';
             });
         }
     </script>
