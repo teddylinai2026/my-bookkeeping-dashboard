@@ -101,7 +101,7 @@
             </div>
         </div>
 
-        <!-- KPI 指標 (改為 3 個) -->
+        <!-- KPI 指標 -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500">
                 <p class="text-xs font-medium text-gray-500">總收入 (不受型態篩選影響)</p>
@@ -383,7 +383,18 @@
             const isIncome = selectedType === '收入';
             const labelText = selectedType ? `${selectedType}金額` : '金額';
 
-            // 1. 收支類別分佈 (圓餅圖 - 不顯示圖表上的文字，僅在 hover 顯示金額)
+            // 通用 Tooltip 格式化函式（顯示：項目名稱: $金額 (佔比%)）
+            const tooltipCallback = {
+                label: function(context) {
+                    const label = context.label || '';
+                    const val = context.raw || 0;
+                    const sum = context.dataset.data.reduce((a, b) => a + b, 0);
+                    const pct = sum ? ((val * 100) / sum).toFixed(1) : '0.0';
+                    return ` ${label}: $${val.toLocaleString()} (${pct}%)`;
+                }
+            };
+
+            // 1. 收支類別分佈 (圓餅圖)
             categoryChart = new Chart(document.getElementById('categoryChart'), {
                 type: 'doughnut',
                 data: {
@@ -397,18 +408,8 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        datalabels: {
-                            display: false
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    const label = context.label || '';
-                                    const val = context.raw || 0;
-                                    return ` ${label}: $${val.toLocaleString()}`;
-                                }
-                            }
-                        }
+                        datalabels: { display: false },
+                        tooltip: { callbacks: tooltipCallback }
                     }
                 }
             });
@@ -427,15 +428,9 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 25 } },
                     plugins: {
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'top',
-                            formatter: (value) => value ? '$' + value.toLocaleString() : '',
-                            font: { size: 10, weight: 'bold' },
-                            color: '#374151'
-                        }
+                        datalabels: { display: false },
+                        tooltip: { callbacks: tooltipCallback }
                     }
                 }
             });
@@ -454,15 +449,9 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 25 } },
                     plugins: {
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'top',
-                            formatter: (value) => value ? '$' + value.toLocaleString() : '',
-                            font: { size: 10, weight: 'bold' },
-                            color: '#374151'
-                        }
+                        datalabels: { display: false },
+                        tooltip: { callbacks: tooltipCallback }
                     }
                 }
             });
@@ -481,15 +470,9 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 25 } },
                     plugins: {
-                        datalabels: {
-                            anchor: 'end',
-                            align: 'top',
-                            formatter: (value) => value ? '$' + value.toLocaleString() : '',
-                            font: { size: 10, weight: 'bold' },
-                            color: '#374151'
-                        }
+                        datalabels: { display: false },
+                        tooltip: { callbacks: tooltipCallback }
                     }
                 }
             });
