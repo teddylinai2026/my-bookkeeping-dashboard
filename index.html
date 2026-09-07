@@ -101,8 +101,8 @@
             </div>
         </div>
 
-        <!-- KPI 指標 -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <!-- KPI 指標 (改為 3 個) -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500">
                 <p class="text-xs font-medium text-gray-500">總收入 (不受型態篩選影響)</p>
                 <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-income">$0</h3>
@@ -115,16 +115,12 @@
                 <p class="text-xs font-medium text-gray-500">淨結餘</p>
                 <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-balance">$0</h3>
             </div>
-            <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-purple-500">
-                <p class="text-xs font-medium text-gray-500">篩選筆數 / 儲蓄率</p>
-                <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-rate">0 筆 (0%)</h3>
-            </div>
         </div>
 
         <!-- 圖表展示區 -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div class="bg-white p-5 rounded-xl shadow-sm">
-                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支類別分佈 (金額佔比)</h4>
+                <h4 class="font-bold text-gray-800 mb-4 text-sm">收支類別分佈</h4>
                 <div class="h-64"><canvas id="categoryChart"></canvas></div>
             </div>
             <div class="bg-white p-5 rounded-xl shadow-sm">
@@ -268,7 +264,6 @@
                 yearSelect.appendChild(opt);
             });
 
-            // 保留選取狀態
             if (currentYear && uniqueYears.includes(currentYear)) {
                 yearSelect.value = currentYear;
             }
@@ -330,16 +325,15 @@
                 document.getElementById(`filter-${key}`).value = '';
             }
 
-            // 更新選項結構
             updateDropdownOptions();
 
-            // 1. 自動預設選取「最新年份」
+            // 預設最新年份
             const yearSelect = document.getElementById('filter-year');
             if (yearSelect.options.length > 1) {
-                yearSelect.selectedIndex = 1; // 索引 1 為最頂端的最新年份
+                yearSelect.selectedIndex = 1;
             }
 
-            // 2. 自動預設交易型態為「支出」
+            // 預設交易型態為「支出」
             const typeSelect = document.getElementById('filter-type');
             if (Array.from(typeSelect.options).some(o => o.value === '支出')) {
                 typeSelect.value = '支出';
@@ -364,12 +358,10 @@
             });
 
             const balance = income - expense;
-            const rate = income > 0 ? ((balance / income) * 100).toFixed(1) : 0;
 
             document.getElementById('kpi-income').innerText = '$' + income.toLocaleString();
             document.getElementById('kpi-expense').innerText = '$' + expense.toLocaleString();
             document.getElementById('kpi-balance').innerText = '$' + balance.toLocaleString();
-            document.getElementById('kpi-rate').innerText = `${filteredData.length} 筆 (${rate}%)`;
         }
 
         function renderCharts() {
@@ -391,7 +383,7 @@
             const isIncome = selectedType === '收入';
             const labelText = selectedType ? `${selectedType}金額` : '金額';
 
-            // 1. 收支類別分佈 (圓餅圖)
+            // 1. 收支類別分佈 (圓餅圖 - 不顯示圖表上的文字，僅在 hover 顯示金額)
             categoryChart = new Chart(document.getElementById('categoryChart'), {
                 type: 'doughnut',
                 data: {
@@ -406,22 +398,14 @@
                     maintainAspectRatio: false,
                     plugins: {
                         datalabels: {
-                            formatter: (value, ctx) => {
-                                const sum = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                                if (!sum || !value) return '';
-                                return ((value * 100) / sum).toFixed(1) + '%';
-                            },
-                            color: '#fff',
-                            font: { weight: 'bold', size: 11 }
+                            display: false
                         },
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
                                     const label = context.label || '';
                                     const val = context.raw || 0;
-                                    const sum = context.dataset.data.reduce((a, b) => a + b, 0);
-                                    const pct = sum ? ((val * 100) / sum).toFixed(1) : 0;
-                                    return ` ${label}: $${val.toLocaleString()} (${pct}%)`;
+                                    return ` ${label}: $${val.toLocaleString()}`;
                                 }
                             }
                         }
