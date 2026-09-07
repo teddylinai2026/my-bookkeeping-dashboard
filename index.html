@@ -60,8 +60,14 @@
                 </div>
             </div>
 
-            <!-- 5 維度下拉選單網格 -->
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <!-- 6 維度下拉選單網格 (預設最新年份、預設支出) -->
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 mb-1">年份 (預設最新)</label>
+                    <select id="filter-year" onchange="onFilterChange()" class="w-full border rounded-lg p-2 text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500">
+                        <option value="">全部年份</option>
+                    </select>
+                </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 mb-1">交易型態 (預設支出)</label>
                     <select id="filter-type" onchange="onFilterChange()" class="w-full border rounded-lg p-2 text-xs bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500">
@@ -98,11 +104,11 @@
         <!-- KPI 指標 -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500">
-                <p class="text-xs font-medium text-gray-500">總收入 (不受交易型態篩選影響)</p>
+                <p class="text-xs font-medium text-gray-500">總收入 (不受型態篩選影響)</p>
                 <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-income">$0</h3>
             </div>
             <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500">
-                <p class="text-xs font-medium text-gray-500">總支出 (不受交易型態篩選影響)</p>
+                <p class="text-xs font-medium text-gray-500">總支出 (不受型態篩選影響)</p>
                 <h3 class="text-xl md:text-2xl font-bold text-gray-900 mt-1" id="kpi-expense">$0</h3>
             </div>
             <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500">
@@ -166,7 +172,7 @@
     </div>
 
     <script>
-        // 註冊 DataLabels 插件
+        // 註冊 ChartDataLabels 外掛
         Chart.register(ChartDataLabels);
 
         let rawData = [];
@@ -214,12 +220,15 @@
             });
         }
 
-        // 核心交叉篩選邏輯
         function getFilteredDataset(excludeField = null) {
             const startDate = document.getElementById('start-date').value;
             const endDate = document.getElementById('end-date').value;
+            const selectedYear = document.getElementById('filter-year').value;
 
             return rawData.filter(d => {
+                const rowYear = d.日期 ? String(d.日期).trim().substring(0, 4) : '';
+                if (excludeField !== 'year' && selectedYear && rowYear !== selectedYear) return false;
+
                 if (currentTimeRange === 'thisMonth') {
                     const now = new Date().toISOString().slice(0, 7);
                     if (!d.日期 || !d.日期.startsWith(now)) return false;
@@ -244,6 +253,27 @@
         }
 
         function updateDropdownOptions() {
+            // 1. 年份下拉選單動態更新
+            const yearSelect = document.getElementById('filter-year');
+            const currentYear = yearSelect.value;
+            const availableForYear = getFilteredDataset('year');
+            const uniqueYears = [...new Set(availableForYear.map(d => d.日期 ? String(d.日期).trim().substring(0, 4) : '').filter(y => y && y.length === 4))].sort().reverse();
+
+            yearSelect.innerHTML = '<option value="">全部年份</option>';
+            uniqueYears.forEach(y => {
+                const opt = document.createElement('option');
+                opt.value = y;
+                opt.textContent = y + ' 年';
+                if (y === currentYear) opt.selected = true;
+                yearSelect.appendChild(opt);
+            });
+
+            // 保留選取狀態
+            if (currentYear && uniqueYears.includes(currentYear)) {
+                yearSelect.value = currentYear;
+            }
+
+            // 2. 其餘維度下拉選單動態更新
             for (const [key, colName] of Object.entries(filterKeys)) {
                 const selectEl = document.getElementById(`filter-${key}`);
                 const currentVal = selectEl.value;
@@ -294,13 +324,22 @@
 
             document.getElementById('start-date').value = '';
             document.getElementById('end-date').value = '';
+            document.getElementById('filter-year').value = '';
 
             for (const key of Object.keys(filterKeys)) {
                 document.getElementById(`filter-${key}`).value = '';
             }
 
-            // 初始化下拉選單並將預設交易型態設為「支出」
+            // 更新選項結構
             updateDropdownOptions();
+
+            // 1. 自動預設選取「最新年份」
+            const yearSelect = document.getElementById('filter-year');
+            if (yearSelect.options.length > 1) {
+                yearSelect.selectedIndex = 1; // 索引 1 為最頂端的最新年份
+            }
+
+            // 2. 自動預設交易型態為「支出」
             const typeSelect = document.getElementById('filter-type');
             if (Array.from(typeSelect.options).some(o => o.value === '支出')) {
                 typeSelect.value = '支出';
@@ -316,7 +355,6 @@
         }
 
         function renderKPIs() {
-            // 總收入、總支出、淨結餘不受交易型態篩選影響，排除 'type' 條件進行統計
             const kpiData = getFilteredDataset('type');
             let income = 0, expense = 0;
             kpiData.forEach(d => {
@@ -353,7 +391,7 @@
             const isIncome = selectedType === '收入';
             const labelText = selectedType ? `${selectedType}金額` : '金額';
 
-            // 1. 收支類別分佈 (圓餅圖 - 標籤顯示百分比，懸浮提示顯示金額與百分比)
+            // 1. 收支類別分佈 (圓餅圖)
             categoryChart = new Chart(document.getElementById('categoryChart'), {
                 type: 'doughnut',
                 data: {
